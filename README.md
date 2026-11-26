@@ -71,6 +71,22 @@ converted to shares at the pre-fee price. Because `highWaterMark` is updated to 
 current `totalAssets`, harvesting twice in a row charges the fee once. Deposits into an
 empty vault set the baseline, so principal is never billed as profit.
 
+## Cap ramps
+
+Growth is usually staged, so the cap is not always a constant. `src/extensions/CapSchedule.sol`
+is a separate, owner-only helper: it stores a start cap, an end cap and a duration, and
+`step()` returns the linearly interpolated cap at `block.timestamp`. The owner applies it
+with `vault.setCap(schedule.step())`. Keeping it outside the vault means a wrong ramp is
+replaced by deploying a new schedule, not by migrating the vault.
+
+```sh
+cast send $SCHEDULE "step()" --rpc-url $RPC                       # read the implied cap
+cast send $VAULT "setCap(uint256)" <cap> --rpc-url $RPC           # apply it
+```
+
+Ramps only raise or lower the *ceiling*; an existing balance above a lowered cap simply
+blocks new deposits until it drains.
+
 ## Layout
 
 ```
@@ -79,8 +95,10 @@ src/
   lib/ERC20.sol          minimal share token (no hooks, no permit)
   interfaces/IERC20.sol  three-method asset surface
   mocks/MockERC20.sol    test token
+  extensions/CapSchedule.sol  linear cap ramp helper (owner-only)
 test/
   CappedVault.t.sol      cap, rounding, fee and drawdown coverage
+  CapSchedule.t.sol      interpolation, clamping, access control
 ```
 
 ## Upgrade path
